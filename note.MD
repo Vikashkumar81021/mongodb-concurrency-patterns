@@ -27,3 +27,6 @@ Atomic Update:
 Optimistic Locking:
 
 "Maine document read kiya tha. Ab mujhe ensure karna hai ki mere read karne ke baad kisi aur ne us document ko change nahi kiya."
+
+Pessimistic Locking
+Pessimistic locking mein Request B ko wait karna padega jab tak Request A lock release nahi karti.

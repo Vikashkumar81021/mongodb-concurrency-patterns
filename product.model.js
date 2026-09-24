@@ -15,6 +15,11 @@ const productSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    //Pessimisctic locke
+    locked: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true },
 );
