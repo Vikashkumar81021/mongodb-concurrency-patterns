@@ -9,6 +9,12 @@ const productSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+
+    //adding field for optmistic locking
+    version: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true },
 );
