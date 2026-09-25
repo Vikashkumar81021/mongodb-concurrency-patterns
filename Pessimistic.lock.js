@@ -25,10 +25,12 @@ const router = express.Router();
 //   }
 // });
 router.patch("/product/:productId/purchase", async (req, res) => {
+  let lockAcquired = false;
+
   try {
     const { productId } = req.params;
 
-    // 1. Lock acquire karo
+    // 1. Lock acquire
     const product = await Product.findOneAndUpdate(
       {
         _id: productId,
@@ -37,6 +39,7 @@ router.patch("/product/:productId/purchase", async (req, res) => {
       {
         $set: {
           locked: true,
+          lockedAt: new Date(),
         },
       },
       {
@@ -51,11 +54,10 @@ router.patch("/product/:productId/purchase", async (req, res) => {
       });
     }
 
+    lockAcquired = true;
+
     // 2. Stock check
     if (product.stock <= 0) {
-      // Lock release karna important hai
-      await Product.updateOne({ _id: productId }, { $set: { locked: false } });
-
       return res.status(400).json({
         message: "Out of stock",
       });
@@ -66,9 +68,6 @@ router.patch("/product/:productId/purchase", async (req, res) => {
 
     await product.save();
 
-    // 4. Lock release
-    await Product.updateOne({ _id: productId }, { $set: { locked: false } });
-
     return res.status(200).json({
       message: "Product purchased successfully",
       product,
@@ -77,5 +76,18 @@ router.patch("/product/:productId/purchase", async (req, res) => {
     return res.status(500).json({
       message: error.message || "Internal server error",
     });
+  } finally {
+    // 4. Lock release
+    if (lockAcquired) {
+      await Product.updateOne(
+        { _id: productId },
+        {
+          $set: {
+            locked: false,
+            lockedAt: null,
+          },
+        },
+      );
+    }
   }
 });
