@@ -1,4 +1,5 @@
 import express from "express";
+import Product from "./product.model.js";
 
 const router = express.Router();
 //OPTMISTICS LOCKING
