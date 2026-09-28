@@ -32,7 +32,7 @@ Pessimistic Locking
 Pessimistic locking mein Request B ko wait karna padega jab tak Request A lock release nahi karti.
 
 Offset pagination ki 2 major problems:
-
+Offset ka simple meaning hai: “kitne records ko pehle skip karna hai.”
 Large skip() → performance issue
 Data change hone par page boundaries shift ho sakti hain → duplicate/missing records ka risk
 
@@ -63,3 +63,344 @@ Isliye large offset par performance degrade ho sakti hai.
 
 #Problem 2: Data change hone par records duplicate/missing ho sakte hain
 Isi problem ko solve karne ke liye cursor-based pagination use hoti hai.
+
+#1. Cursor ka basic idea
+
+Offset bolta tha:
+
+"Pehle 20 records skip karo."
+
+Cursor bolta hai:
+
+"Mujhe us record ke BAAD wale records do jo mujhe last time mila tha."
+CURSOR
+
+\_id > lastId
+↓
+"last record ke baad se do"
+
+# Pagination
+
+Pagination ka use tab karte hain jab database mein bahut saare records hote hain aur hum ek baar mein saare records client ko nahi bhejna chahte.
+
+### Example
+
+Database mein 10 lakh products hain.
+
+Agar API ek baar mein saare products bhej de:
+
+```text
+10 lakh products
+      ↓
+Large response
+      ↓
+Slow API
+      ↓
+High memory / bandwidth usage
+```
+
+Isliye hum data ko small pages mein divide karte hain.
+
+```text
+Page 1 → 20 products
+Page 2 → 20 products
+Page 3 → 20 products
+...
+```
+
+Pagination ke common approaches:
+
+1. Offset-based Pagination
+2. Cursor-based Pagination
+
+---
+
+# 1. Offset-Based Pagination
+
+## What?
+
+Offset pagination mein hum bolte hain:
+
+> "Itne records skip karo aur uske baad kuch records return karo."
+
+MongoDB mein:
+
+```js
+.skip(offset)
+.limit(limit)
+```
+
+---
+
+## Example
+
+Maan lo database mein:
+
+```text
+P1 P2 P3 P4 P5 P6 P7 P8 P9 P10
+P11 P12 P13 P14 P15 P16 P17 P18 P19 P20
+```
+
+Aur:
+
+```text
+limit = 5
+```
+
+### Page 1
+
+```http
+GET /products?page=1&limit=5
+```
+
+Formula:
+
+```js
+offset = (page - 1) * limit;
+```
+
+```text
+offset = (1 - 1) * 5
+       = 0
+```
+
+Query:
+
+```js
+Product.find().skip(0).limit(5);
+```
+
+Result:
+
+```text
+P1 P2 P3 P4 P5
+```
+
+---
+
+### Page 2
+
+```http
+GET /products?page=2&limit=5
+```
+
+```text
+offset = (2 - 1) * 5
+       = 5
+```
+
+Query:
+
+```js
+Product.find().skip(5).limit(5);
+```
+
+Database:
+
+```text
+P1 P2 P3 P4 P5   → SKIP
+P6 P7 P8 P9 P10   → RETURN
+```
+
+Result:
+
+```text
+P6 P7 P8 P9 P10
+```
+
+---
+
+### Page 3
+
+```http
+GET /products?page=3&limit=5
+```
+
+```text
+offset = (3 - 1) * 5
+       = 10
+```
+
+Query:
+
+```js
+Product.find().skip(10).limit(5);
+```
+
+Result:
+
+```text
+P11 P12 P13 P14 P15
+```
+
+---
+
+# Offset Pagination API
+
+```js
+router.get("/products", async (req, res) => {
+  try {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+
+    const offset = (page - 1) * limit;
+
+    const products = await Product.find()
+      .sort({ _id: 1 })
+      .skip(offset)
+      .limit(limit);
+
+    return res.status(200).json({
+      success: true,
+      page,
+      limit,
+      products,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+```
+
+---
+
+# Offset Pagination Formula
+
+```js
+offset = (page - 1) * limit;
+```
+
+Example:
+
+```text
+limit = 10
+
+Page 1 → offset 0
+Page 2 → offset 10
+Page 3 → offset 20
+Page 4 → offset 30
+```
+
+---
+
+# Problems with Offset Pagination
+
+## Problem 1 — Large Offset
+
+Maan lo database mein 50 lakh records hain.
+
+Request:
+
+```http
+GET /products?page=100000&limit=20
+```
+
+Offset bahut bada ho jayega.
+
+```js
+skip(1999980);
+```
+
+Database ko large offset tak traverse karna pad sakta hai before returning the next 20 records.
+
+Isliye large offsets par performance degrade ho sakti hai.
+
+```text
+Small offset
+    ↓
+Usually okay
+
+Large offset
+    ↓
+More work
+    ↓
+Potentially slower query
+```
+
+---
+
+# Problem 2 — Data Change
+
+Offset **position-based** hota hai.
+
+Maan lo:
+
+### Request 1
+
+```text
+Database:
+
+P1 P2 P3 P4 P5 P6 P7 P8 P9 P10
+```
+
+Page 1:
+
+```js
+skip(0).limit(5);
+```
+
+Result:
+
+```text
+P1 P2 P3 P4 P5
+```
+
+Ab user ke next request se pehle ek new product insert ho gaya:
+
+```text
+P0 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10
+```
+
+### Request 2
+
+User page 2 maangta hai:
+
+```js
+skip(5).limit(5);
+```
+
+Current database mein:
+
+```text
+P0 P1 P2 P3 P4 → SKIP
+
+P5 P6 P7 P8 P9 → RETURN
+```
+
+Lekin page 1 mein user ko already:
+
+```text
+P1 P2 P3 P4 P5
+```
+
+mil chuke the.
+
+Therefore:
+
+```text
+P5 → DUPLICATE
+```
+
+Data insert/delete hone par page boundaries shift ho sakti hain.
+
+Isse:
+
+```text
+Duplicate records
+Missing records
+```
+
+ho sakte hain.
+
+---
+
+# 2. Cursor-Based Pagination
+
+## What?
+
+Cursor pagination mein hum records ko skip nahi karte.
+
+In
