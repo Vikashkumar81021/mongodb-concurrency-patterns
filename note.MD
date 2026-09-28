@@ -30,3 +30,36 @@ Optimistic Locking:
 
 Pessimistic Locking
 Pessimistic locking mein Request B ko wait karna padega jab tak Request A lock release nahi karti.
+
+Offset pagination ki 2 major problems:
+
+Large skip() → performance issue
+Data change hone par page boundaries shift ho sakti hain → duplicate/missing records ka risk
+
+page batata hai kaunsa page chahiye, limit batata hai kitne records chahiye, aur skip batata hai kitne records pehle chhodne hain.
+
+#ISSUE WITH OFFSET PAGINATION
+#Problem 1: skip bada hone par query slow ho sakti hai
+
+Maan lo 50 lakh products hain.
+
+User page 1 par:
+
+skip(0).limit(20)
+
+Easy — 20 products.
+
+Lekin user bahut aage chala gaya:
+
+skip(2000000).limit(20)
+
+Database ko large offset tak traverse karna pad sakta hai, phir next 20 records dene hain.
+
+P1 P2 P3 ... P20,00,000 → SKIP
+↓
+next 20 → RETURN
+
+Isliye large offset par performance degrade ho sakti hai.
+
+#Problem 2: Data change hone par records duplicate/missing ho sakte hain
+Isi problem ko solve karne ke liye cursor-based pagination use hoti hai.
