@@ -9,3 +9,11 @@ const conn = async () => {
   }
 };
 export default conn;
+
+//connection  pooling conecpet
+// mongoose.connect(process.env.MONGO_URI, {
+//Mongoose pool mein maximum 10 connections maintain/use kar sakta hai.
+//   maxPoolSize: 10,
+//means MongoDB server select/connect karne ki attempt ke liye roughly 5 seconds ka timeout.
+//   serverSelectionTimeoutMS: 5000
+// });
